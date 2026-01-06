@@ -1,0 +1,18 @@
+services:
+  core:
+    build: ./services/core
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./.env
+    volumes:
+      - ./data:/app/data
+
+  ui:
+    build: ./services/ui
+    ports:
+      - "8501:8501"
+    depends_on:
+      - core
+    environment:
+      - API_BASE=http://core:8080
