@@ -1,25 +1,52 @@
 from __future__ import annotations
 
+import logging
 import math
 import time
-from typing import Any
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 from .config import get_settings
 from .storage.sqlite import SQLiteStore
+from .streaming.runner import StreamingRunner
 
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 
 settings = get_settings()
 store = SQLiteStore(settings.sqlite_path)
+runner: StreamingRunner | None = None
 
-app = FastAPI(title="Trading Copilot Core API", version="0.1.0")
 
-
-@app.on_event("startup")
-async def _startup() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Lifespan context manager for startup/shutdown."""
+    global runner
+    
+    # Startup: initialize storage and start streaming
     await store.init()
+    runner = StreamingRunner(settings, store)
+    await runner.start()
+    
+    yield
+    
+    # Shutdown: stop streaming gracefully
+    if runner:
+        await runner.stop()
+
+
+app = FastAPI(
+    title="Trading Copilot Core API",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 
 
 class BarQuery(BaseModel):
@@ -51,6 +78,25 @@ class ForecastResponse(BaseModel):
 @app.get("/health")
 async def health() -> dict[str, Any]:
     return {"ok": True, "ts": int(time.time()), "provider": settings.provider}
+
+
+@app.get("/v1/providers")
+async def get_providers() -> dict[str, Any]:
+    """Get information about enabled providers and their configuration."""
+    return {
+        "enabled": settings.get_enabled_providers(),
+        "binance": {
+            "transport": settings.binance_transport,
+            "active_transport": runner.active_binance_transport if runner else None,
+            "symbols": settings.get_binance_symbols(),
+            "rest_poll_seconds": settings.binance_rest_poll_seconds,
+        },
+        "oanda": {
+            "configured": bool(settings.oanda_api_key and settings.oanda_account_id),
+            "instruments": settings.get_oanda_instruments() if settings.oanda_api_key else [],
+            "environment": settings.oanda_environment,
+        },
+    }
 
 
 @app.get("/v1/bars")
