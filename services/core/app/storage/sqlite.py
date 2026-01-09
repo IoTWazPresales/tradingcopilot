@@ -82,3 +82,40 @@ class SQLiteStore:
       )
       rows = await cur.fetchall()
       return [dict(r) for r in reversed(rows)]
+  
+  async def get_distinct_symbols(self, interval: Optional[str] = None) -> list[str]:
+    """
+    Get distinct symbols from the database.
+    
+    Args:
+        interval: Optional interval filter
+        
+    Returns:
+        List of unique symbols
+    """
+    async with aiosqlite.connect(self.path) as db:
+      if interval:
+        cur = await db.execute(
+          "SELECT DISTINCT symbol FROM bars WHERE interval=? ORDER BY symbol",
+          (interval,)
+        )
+      else:
+        cur = await db.execute(
+          "SELECT DISTINCT symbol FROM bars ORDER BY symbol"
+        )
+      rows = await cur.fetchall()
+      return [row[0] for row in rows]
+  
+  async def get_distinct_intervals(self) -> list[str]:
+    """
+    Get distinct intervals from the database.
+    
+    Returns:
+        List of unique intervals
+    """
+    async with aiosqlite.connect(self.path) as db:
+      cur = await db.execute(
+        "SELECT DISTINCT interval FROM bars ORDER BY interval"
+      )
+      rows = await cur.fetchall()
+      return [row[0] for row in rows]

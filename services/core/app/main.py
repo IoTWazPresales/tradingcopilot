@@ -48,6 +48,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Phase 2: Include signal router (does not modify Phase 1 endpoints)
+from .api import signals as signals_api
+signals_api.set_store(store)
+app.include_router(signals_api.router)
+
+# Phase 7.1: Include metadata router for UI support
+from .api import meta as meta_api
+meta_api.set_store(store)
+app.include_router(meta_api.router)
+
 
 class BarQuery(BaseModel):
     symbol: str

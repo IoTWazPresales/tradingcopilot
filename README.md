@@ -2,6 +2,16 @@
 
 Local-first live market forecasting + trade-zones engine.
 
+## 🚀 Latest: Phase 2 Signal Engine
+
+**NEW:** Multi-horizon signal analysis with deterministic trade planning! See [PHASE2.md](PHASE2.md) for details.
+
+- **POST /v1/signal** - Get STRONG_BUY/BUY/NEUTRAL/SELL/STRONG_SELL signals
+- Multi-timeframe analysis (1m to 1d)
+- Adaptive confidence scoring
+- Trade plans with entry/invalidation/sizing
+- 61 unit tests passing ✅
+
 ## What you get
 - **Live streaming**: Binance WebSocket/REST for crypto (no API key needed!)
 - **Smart fallback**: Auto-detects if WebSocket is blocked, falls back to REST polling
@@ -11,7 +21,50 @@ Local-first live market forecasting + trade-zones engine.
 - **Trade plan extraction**: BUY zone / SELL zone / INVALIDATION + confidence + expected duration
 - **FastAPI backend + Streamlit UI**: Clean REST API + interactive web UI
 
-## Quickstart (Docker Compose - Recommended)
+## ⚡ ONE COMMAND QUICKSTART (Recommended - Phase 7)
+
+**New in Phase 7**: Start backend + UI + auto-backfill with one command!
+
+```powershell
+# Windows PowerShell
+cd C:\tradingcopilot\services\core
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python -m app.bootstrap.run_all
+```
+
+**What it does:**
+1. ✅ Checks database for sufficient data
+2. ✅ Auto-backfills last 7 days if needed
+3. ✅ Starts backend API (port 8080)
+4. ✅ Starts Streamlit UI (port 8501)
+5. ✅ Opens browser automatically
+6. ✅ Uses REST fallback (no WebSocket failures!)
+
+**Access:**
+- 🌐 UI: http://localhost:8501
+- 🔗 API: http://localhost:8080/docs
+
+**Options:**
+```powershell
+# Skip backfill
+python -m app.bootstrap.run_all --skip_backfill
+
+# Force REST mode (recommended on restrictive networks)
+python -m app.bootstrap.run_all --prefer_rest
+
+# Custom backfill
+python -m app.bootstrap.run_all --symbol ETHUSDT --days 14 --min_1m_bars 5000
+
+# No browser auto-open
+python -m app.bootstrap.run_all --no_browser
+```
+
+**Stop**: Press `CTRL+C` to stop both services.
+
+---
+
+## Quickstart (Docker Compose)
 
 1. **Create `.env` file**:
    ```bash

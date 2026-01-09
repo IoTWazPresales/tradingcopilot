@@ -31,6 +31,7 @@ class StreamingRunner:
         self.aggregator = BarAggregator(store, settings.get_bar_intervals())
         self.tasks: list[asyncio.Task] = []
         self.active_binance_transport: str | None = None  # Track which transport is active
+        self._rest_fallback_triggered: bool = False  # Prevent multiple REST fallbacks
         
     async def start(self) -> None:
         """Start all enabled provider streams."""
@@ -98,11 +99,10 @@ class StreamingRunner:
             # Try WebSocket first, fallback to REST if unavailable
             logger.info(f"Starting Binance (mode: auto) for symbols: {symbols}")
             try:
-                await self._start_binance_ws(symbols, fail_fast=True)
+                await self._start_binance_ws(symbols, fail_fast=True, auto_fallback=True)
             except BinanceWsUnavailable:
                 logger.warning(
-                    "Binance WebSocket unavailable. Falling back to REST polling mode. "
-                    "Set binance_transport=rest in .env to skip WebSocket attempts."
+                    "Binance WebSocket unavailable (initial connection). Falling back to REST polling mode."
                 )
                 await self._start_binance_rest(symbols)
         
@@ -113,12 +113,23 @@ class StreamingRunner:
             )
             await self._start_binance()  # Recursive call with default
     
-    async def _start_binance_ws(self, symbols: list[str], fail_fast: bool = False) -> None:
-        """Start Binance WebSocket stream."""
+    async def _start_binance_ws(self, symbols: list[str], fail_fast: bool = False, auto_fallback: bool = False) -> None:
+        """
+        Start Binance WebSocket stream.
+        
+        Args:
+            symbols: List of symbols to stream
+            fail_fast: Raise BinanceWsUnavailable after 3 connection failures
+            auto_fallback: Monitor task and fallback to REST if it dies (AUTO mode only)
+        """
         streamer = BinanceWebSocketStreamer(symbols, fail_fast=fail_fast)
         self.active_binance_transport = "ws"
         task = asyncio.create_task(self._consume_stream(streamer.stream_bars(), "Binance-WS"))
         self.tasks.append(task)
+        
+        # In AUTO mode, monitor WS task and fallback to REST if it dies
+        if auto_fallback:
+            asyncio.create_task(self._monitor_ws_and_fallback(task, symbols))
     
     async def _start_binance_rest(self, symbols: list[str]) -> None:
         """Start Binance REST polling."""
@@ -126,6 +137,28 @@ class StreamingRunner:
         self.active_binance_transport = "rest"
         task = asyncio.create_task(self._consume_stream(poller.stream_bars(), "Binance-REST"))
         self.tasks.append(task)
+    
+    async def _monitor_ws_and_fallback(self, ws_task: asyncio.Task, symbols: list[str]) -> None:
+        """
+        Monitor WebSocket task in AUTO mode and fallback to REST if it dies.
+        
+        This prevents the server from losing bars when WS connection fails after
+        initial successful connection.
+        """
+        try:
+            await ws_task
+        except asyncio.CancelledError:
+            # Normal shutdown, don't fallback
+            raise
+        except Exception as e:
+            # WS task died unexpectedly
+            if not self._rest_fallback_triggered:
+                self._rest_fallback_triggered = True
+                logger.warning(
+                    f"Binance WebSocket consumer died unexpectedly: {e}. "
+                    "Falling back to REST polling mode (AUTO mode)."
+                )
+                await self._start_binance_rest(symbols)
     
     async def _start_oanda(self) -> None:
         """Start OANDA pricing stream."""
